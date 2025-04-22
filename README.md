@@ -1,19 +1,21 @@
 # Heston-Bates Option Pricing and Calibration
 
-This project implements the Heston-Bates model for vanilla option pricing. It extends the classical Heston model by including jump components. The code uses Fourier inversion techniques and least squares optimization to calibrate the model parameters to market data.
+This project implements various option pricing models based on the Heston framework. It extends the classical Heston model by including jump components, explores different calibration methodologies, and even tackles multi-factor volatility models.
 
 ## Features
 
-- **Characteristic Function:** Computes the characteristic function combining the Heston stochastic volatility core with a jump adjustment.
-- **Option Pricing via FFT:** Prices European call and put options using Fourier transform inversion.
-- **Calibration:** Calibrates the model parameters (volatility, mean reversion, jump intensity, etc.) to market data extracted from a DataFrame.
-- **Market Data Processing:** Extracts strike and volatility information from market quotes and constructs the required data structure.
+- **Characteristic Functions:** Compute characteristic functions for the Heston-Bates and Heston 1993 models.
+- **Option Pricing via FFT:** Price European call and put options using Fourier inversion techniques.
+- **Calibration Procedures:** Calibrate model parameters (stochastic volatility, jump intensity, etc.) through least squares optimization.
+- **Market Data Processing:** Extract and structure market data from raw quotes for model calibration.
+- **Model Comparisons:** Analyze and compare model outputs (e.g., Black–Scholes, Heston-Bates, Heston 1993, and Double Heston).
 
 ## Project Structure
 
-- **heston-bates.ipynb:** The main Jupyter Notebook that contains the model implementation, calibration routines, and market data extraction.
-- **93.ipynb:** Contains the Heston 1993 model implementation, calibration routines, and data extraction.
-- **README.md:** This file provides an overview and documentation for the project.
+- **heston-bates.ipynb:** Main notebook with model implementation, calibration routines, and market data extraction based on the Heston-Bates model.
+- **93.ipynb:** Notebook containing the Heston 1993 model implementation, calibration routines, and data extraction.
+- **double_heston.ipynb:** Notebook for the Double Heston model, including calibration and performance comparison.
+- **README.md:** This file that provides an overview and documentation of the project.
 
 ## Getting Started
 
@@ -24,14 +26,12 @@ This project implements the Heston-Bates model for vanilla option pricing. It ex
    - Matplotlib (for visualizations)
    - SciPy Stats (for Black–Scholes pricing)
 
-2. Run the notebook and follow the cell instructions:
+2. Run the notebooks and follow the cell instructions:
    - Import libraries.
    - Define model functions (characteristic function, option pricing, calibration).
    - Extract and prepare market data.
-   - Calibrate the Heston-Bates model and compare its prices against Black–Scholes benchmarks.
+   - Calibrate the models and compare their outputs against benchmarks.
 
 ## Model Overview
 
-The Heston-Bates model extends the Heston model by accounting for jumps in the underlying asset price. The characteristic function is modified with a jump component, and the drift is adjusted accordingly. The model is calibrated using market prices through non-linear least squares minimization.
-
-For more details on the mathematical formulation, refer to the documentation cells within the notebook.
+The project explores several models based on the Heston framework. The Heston-Bates model incorporates jumps, while the Heston 1993 model and the Double Heston model offer alternative calibrations and volatility dynamics. Detailed explanations and mathematical formulations can be found within each notebook’s documentation cells.

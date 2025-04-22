@@ -12,6 +12,7 @@ This project implements the Heston-Bates model for vanilla option pricing. It ex
 ## Project Structure
 
 - **heston-bates.ipynb:** The main Jupyter Notebook that contains the model implementation, calibration routines, and market data extraction.
+- **93.ipynb:** Contains the Heston 1993 model implementation, calibration routines, and data extraction.
 - **README.md:** This file provides an overview and documentation for the project.
 
 ## Getting Started

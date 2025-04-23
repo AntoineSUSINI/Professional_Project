@@ -91,6 +91,19 @@ def pack_params(x, S0, r, q):
 def index():
     return render_template('index.html')
 
+def get_sheet_name(file):
+    """Retourne le nom de la feuille à utiliser ou un dictionnaire avec la liste des feuilles"""
+    xls = pd.ExcelFile(file)
+    sheet_names = xls.sheet_names
+    
+    if len(sheet_names) == 1:
+        return sheet_names[0]
+    
+    return {
+        'multiple_sheets': True,
+        'sheets': sheet_names
+    }
+
 @app.route('/upload', methods=['POST'])
 def upload_file():
     if 'file' not in request.files:
@@ -101,8 +114,65 @@ def upload_file():
         return jsonify({'error': 'No file selected'}), 400
 
     try:
-        # Lecture du fichier Excel
-        wb = pd.read_excel(file, header=None)
+        # Vérifier les feuilles disponibles
+        sheet_result = get_sheet_name(file)
+        
+        # Si c'est un dictionnaire, plusieurs feuilles sont disponibles
+        if isinstance(sheet_result, dict):
+            return jsonify(sheet_result)
+        
+        # Sinon, c'est le nom de l'unique feuille
+        wb = pd.read_excel(file, header=None, sheet_name=sheet_result)
+        
+        # Extraction des données importantes
+        S0 = float(wb.iat[3, 4])
+        r = float(wb.iat[1, 10])
+        q = float(wb.iat[2, 10])
+        
+        # Extraction de la surface de volatilité
+        market_data = extract_market_data(wb)
+        
+        # Calibration du modèle
+        x0 = np.array([0.04, 1.0, 0.04, 0.5, -0.5])
+        lb = [1e-4, 1e-4, 1e-4, 1e-4, -0.999]
+        ub = [2.0, 10.0, 2.0, 5.0, 0.999]
+        
+        opt = least_squares(
+            lambda x: residuals(x, market_data, S0, r, q),
+            x0,
+            bounds=(lb, ub),
+            xtol=1e-6,
+            ftol=1e-6,
+        )
+        
+        # Stockage des paramètres calibrés
+        calibrated_params = {
+            'v0': float(opt.x[0]),
+            'kappa': float(opt.x[1]),
+            'theta': float(opt.x[2]),
+            'sigma': float(opt.x[3]),
+            'rho': float(opt.x[4]),
+            'S0': S0,
+            'r': r,
+            'q': q
+        }
+        
+        return jsonify(calibrated_params)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/select-sheet', methods=['POST'])
+def select_sheet():
+    if 'file' not in request.files or 'sheet_name' not in request.form:
+        return jsonify({'error': 'Missing file or sheet name'}), 400
+    
+    file = request.files['file']
+    sheet_name = request.form['sheet_name']
+    
+    try:
+        # Lecture du fichier Excel avec la feuille sélectionnée
+        wb = pd.read_excel(file, header=None, sheet_name=sheet_name)
         
         # Extraction des données importantes
         S0 = float(wb.iat[3, 4])
@@ -192,7 +262,7 @@ def extract_market_data(wb):
     # Extract cell K2
     r = wb.iat[1, 10]
 
-# Extract cell K3
+    # Extract cell K3
     q = wb.iat[2, 10]
 
     strikes_abs = df.loc['T']

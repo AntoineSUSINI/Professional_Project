@@ -15,10 +15,16 @@ document.getElementById('upload-form').addEventListener('submit', async (e) => {
         
         const data = await response.json();
         if (response.ok) {
-            calibratedParams = data;
-            displayCalibratedParams(data);
-            document.querySelector('.parameters-section').style.display = 'block';
-            document.querySelector('.pricing-section').style.display = 'block';
+            if (data.multiple_sheets) {
+                // Afficher la sélection de feuille
+                showSheetSelector(data.sheets, fileInput.files[0]);
+            } else {
+                // Continuer avec les paramètres calibrés
+                calibratedParams = data;
+                displayCalibratedParams(data);
+                document.querySelector('.parameters-section').style.display = 'block';
+                document.querySelector('.pricing-section').style.display = 'block';
+            }
         } else {
             alert('Error: ' + data.error);
         }
@@ -75,4 +81,47 @@ function displayCalibratedParams(params) {
         <p>r: ${params.r.toFixed(4)}</p>
         <p>q: ${params.q.toFixed(4)}</p>
     `;
+}
+
+function showSheetSelector(sheets, file) {
+    const selector = document.createElement('div');
+    selector.className = 'sheet-selector';
+    selector.innerHTML = `
+        <h3>Select Sheet</h3>
+        <select id="sheet-select">
+            ${sheets.map(sheet => `<option value="${sheet}">${sheet}</option>`).join('')}
+        </select>
+        <button onclick="selectSheet('${file}')">Confirm</button>
+    `;
+    
+    document.querySelector('.upload-section').appendChild(selector);
+}
+
+async function selectSheet() {
+    const fileInput = document.getElementById('excel-file');
+    const sheetSelect = document.getElementById('sheet-select');
+    const formData = new FormData();
+    
+    formData.append('file', fileInput.files[0]);
+    formData.append('sheet_name', sheetSelect.value);
+    
+    try {
+        const response = await fetch('/select-sheet', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const data = await response.json();
+        if (response.ok) {
+            calibratedParams = data;
+            displayCalibratedParams(data);
+            document.querySelector('.parameters-section').style.display = 'block';
+            document.querySelector('.pricing-section').style.display = 'block';
+            document.querySelector('.sheet-selector').remove();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    } catch (error) {
+        alert('Error selecting sheet: ' + error);
+    }
 }

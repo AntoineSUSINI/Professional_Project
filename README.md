@@ -13,7 +13,7 @@ This project implements various option pricing models based on the Heston framew
 ## Project Structure
 
 - **heston-bates.ipynb:** Main notebook with model implementation, calibration routines, and market data extraction based on the Heston-Bates model.
-- **93.ipynb:** Notebook containing the Heston 1993 model implementation, calibration routines, and data extraction.
+- **Heston93.ipynb:** Notebook containing the Heston 1993 model implementation, calibration routines, and data extraction.
 - **double_heston.ipynb:** Notebook for the Double Heston model, including calibration and performance comparison.
 - **README.md:** This file that provides an overview and documentation of the project.
 

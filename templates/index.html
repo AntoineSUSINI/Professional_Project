@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Heston Model Calculator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Heston Model Calculator</h1>
+        
+        <div class="upload-section">
+            <h2>1. Upload Market Data</h2>
+            <form id="upload-form">
+                <input type="file" id="excel-file" accept=".xlsx,.xls">
+                <button type="submit">Upload and Calibrate</button>
+            </form>
+        </div>
+
+        <div class="parameters-section" style="display: none;">
+            <h2>2. Calibrated Parameters</h2>
+            <div id="calibrated-params"></div>
+        </div>
+
+        <div class="pricing-section" style="display: none;">
+            <h2>3. Option Pricing</h2>
+            <form id="pricing-form">
+                <div class="form-group">
+                    <label for="spot">Spot Price (S0):</label>
+                    <input type="number" id="spot" step="0.01" required>
+                </div>
+                <div class="form-group">
+                    <label for="strike">Strike Price (K):</label>
+                    <input type="number" id="strike" step="0.01" required>
+                </div>
+                <div class="form-group">
+                    <label for="maturity">Maturity (T in years):</label>
+                    <input type="number" id="maturity" step="0.01" required>
+                </div>
+                <button type="submit">Calculate Prices</button>
+            </form>
+            <div id="results" style="display: none;">
+                <h3>Results:</h3>
+                <p>Call Price: <span id="call-price"></span></p>
+                <p>Put Price: <span id="put-price"></span></p>
+            </div>
+        </div>
+    </div>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

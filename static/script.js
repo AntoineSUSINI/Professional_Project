@@ -5,11 +5,15 @@ document.getElementById('upload-form').addEventListener('submit', async (e) => {
     
     const fileInput = document.getElementById('excel-file');
     const modelSelect = document.getElementById('model');
+    const loader = document.getElementById('calibration-loader');
     const formData = new FormData();
+    
     formData.append('file', fileInput.files[0]);
     formData.append('model', modelSelect.value);
     
     try {
+        loader.style.display = 'block'; // Show loader
+        
         const response = await fetch('/upload', {
             method: 'POST',
             body: formData
@@ -30,6 +34,8 @@ document.getElementById('upload-form').addEventListener('submit', async (e) => {
         }
     } catch (error) {
         alert('Error uploading file: ' + error);
+    } finally {
+        loader.style.display = 'none'; // Hide loader
     }
 });
 
@@ -132,6 +138,7 @@ async function selectSheet() {
     const fileInput = document.getElementById('excel-file');
     const sheetSelect = document.getElementById('sheet-select');
     const modelSelect = document.getElementById('model');
+    const loader = document.getElementById('calibration-loader');
     const formData = new FormData();
     
     formData.append('file', fileInput.files[0]);
@@ -139,6 +146,8 @@ async function selectSheet() {
     formData.append('model', modelSelect.value);
     
     try {
+        loader.style.display = 'block'; // Show loader
+        
         const response = await fetch('/select-sheet', {
             method: 'POST',
             body: formData
@@ -156,5 +165,7 @@ async function selectSheet() {
         }
     } catch (error) {
         alert('Error selecting sheet: ' + error);
+    } finally {
+        loader.style.display = 'none'; // Hide loader
     }
 }

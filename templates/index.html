@@ -3,55 +3,73 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Heston Model Calculator</title>
+    <title>Option Pricing Calculator</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <div class="container">
-        <h1>Heston Model Calculator</h1>
+        <header class="main-header">
+            <h1>Option Pricing Calculator</h1>
+        </header>
         
-        <div class="upload-section">
-            <h2>1. Upload Market Data</h2>
+        <div class="card upload-section">
+            <h2><span class="step">1</span> Upload Market Data</h2>
             <form id="upload-form">
                 <div class="form-group">
                     <label for="model">Select Model:</label>
-                    <select id="model" name="model">
+                    <select id="model" name="model" class="modern-select">
                         <option value="heston">Heston</option>
                         <option value="heston-bates">Heston-Bates</option>
                         <option value="double-heston">Double Heston</option>
                     </select>
                 </div>
-                <input type="file" id="excel-file" accept=".xlsx,.xls">
-                <button type="submit">Upload and Calibrate</button>
+                <div class="file-input-wrapper">
+                    <label for="excel-file" class="file-label">Choose Excel File</label>
+                    <input type="file" id="excel-file" accept=".xlsx,.xls">
+                </div>
+                <button type="submit" class="primary-button">Upload and Calibrate</button>
             </form>
+            <div id="calibration-loader" class="loader-container" style="display: none;">
+                <div class="loader"></div>
+                <p>Calibrating model, please wait...</p>
+            </div>
         </div>
 
-        <div class="parameters-section" style="display: none;">
-            <h2>2. Calibrated Parameters</h2>
-            <div id="calibrated-params"></div>
+        <div class="card parameters-section" style="display: none;">
+            <h2><span class="step">2</span> Calibrated Parameters</h2>
+            <div id="calibrated-params" class="params-grid"></div>
         </div>
 
-        <div class="pricing-section" style="display: none;">
-            <h2>3. Option Pricing</h2>
+        <div class="card pricing-section" style="display: none;">
+            <h2><span class="step">3</span> Option Pricing</h2>
             <form id="pricing-form">
                 <div class="form-group">
                     <label for="spot">Spot Price (S0):</label>
-                    <input type="number" id="spot" step="0.01" required>
+                    <input type="number" id="spot" step="0.01" required class="modern-input">
                 </div>
                 <div class="form-group">
                     <label for="strike">Strike Price (K):</label>
-                    <input type="number" id="strike" step="0.01" required>
+                    <input type="number" id="strike" step="0.01" required class="modern-input">
                 </div>
                 <div class="form-group">
                     <label for="maturity">Maturity (T in years):</label>
-                    <input type="number" id="maturity" step="0.01" required>
+                    <input type="number" id="maturity" step="0.01" required class="modern-input">
                 </div>
-                <button type="submit">Calculate Prices</button>
+                <button type="submit" class="primary-button">Calculate Prices</button>
             </form>
-            <div id="results" style="display: none;">
-                <h3>Results:</h3>
-                <p>Call Price: <span id="call-price"></span></p>
-                <p>Put Price: <span id="put-price"></span></p>
+            <div id="results" class="results-card" style="display: none;">
+                <h3>Results</h3>
+                <div class="results-grid">
+                    <div class="result-item">
+                        <span class="result-label">Call Price</span>
+                        <span id="call-price" class="result-value"></span>
+                    </div>
+                    <div class="result-item">
+                        <span class="result-label">Put Price</span>
+                        <span id="put-price" class="result-value"></span>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

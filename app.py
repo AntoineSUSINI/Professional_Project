@@ -92,7 +92,7 @@ def index():
     return render_template('index.html')
 
 def get_sheet_name(file):
-    """Retourne le nom de la feuille à utiliser ou un dictionnaire avec la liste des feuilles"""
+    """Selection de la feuille dans le fichier Excel"""
     xls = pd.ExcelFile(file)
     sheet_names = xls.sheet_names
     
@@ -114,25 +114,19 @@ def upload_file():
         return jsonify({'error': 'No file selected'}), 400
 
     try:
-        # Vérifier les feuilles disponibles
         sheet_result = get_sheet_name(file)
         
-        # Si c'est un dictionnaire, plusieurs feuilles sont disponibles
         if isinstance(sheet_result, dict):
             return jsonify(sheet_result)
         
-        # Sinon, c'est le nom de l'unique feuille
         wb = pd.read_excel(file, header=None, sheet_name=sheet_result)
         
-        # Extraction des données importantes
         S0 = float(wb.iat[3, 4])
         r = float(wb.iat[1, 10])
         q = float(wb.iat[2, 10])
         
-        # Extraction de la surface de volatilité
         market_data = extract_market_data(wb)
         
-        # Calibration du modèle
         x0 = np.array([0.04, 1.0, 0.04, 0.5, -0.5])
         lb = [1e-4, 1e-4, 1e-4, 1e-4, -0.999]
         ub = [2.0, 10.0, 2.0, 5.0, 0.999]
@@ -145,7 +139,6 @@ def upload_file():
             ftol=1e-6,
         )
         
-        # Stockage des paramètres calibrés
         calibrated_params = {
             'v0': float(opt.x[0]),
             'kappa': float(opt.x[1]),
@@ -171,18 +164,14 @@ def select_sheet():
     sheet_name = request.form['sheet_name']
     
     try:
-        # Lecture du fichier Excel avec la feuille sélectionnée
         wb = pd.read_excel(file, header=None, sheet_name=sheet_name)
         
-        # Extraction des données importantes
         S0 = float(wb.iat[3, 4])
         r = float(wb.iat[1, 10])
         q = float(wb.iat[2, 10])
         
-        # Extraction de la surface de volatilité
         market_data = extract_market_data(wb)
         
-        # Calibration du modèle
         x0 = np.array([0.04, 1.0, 0.04, 0.5, -0.5])
         lb = [1e-4, 1e-4, 1e-4, 1e-4, -0.999]
         ub = [2.0, 10.0, 2.0, 5.0, 0.999]
@@ -195,7 +184,6 @@ def select_sheet():
             ftol=1e-6,
         )
         
-        # Stockage des paramètres calibrés
         calibrated_params = {
             'v0': float(opt.x[0]),
             'kappa': float(opt.x[1]),
@@ -259,10 +247,8 @@ def extract_market_data(wb):
 
     S0 = wb.iat[3, 4]
 
-    # Extract cell K2
     r = wb.iat[1, 10]
 
-    # Extract cell K3
     q = wb.iat[2, 10]
 
     strikes_abs = df.loc['T']

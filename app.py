@@ -36,6 +36,87 @@ def heston_charfunc(u, params):
 
     return np.exp(C + D * v0 + iu * np.log(S0 * np.exp(-q * T)))
 
+def heston_bates_charfunc(u, params):
+    S0    = params["S0"]
+    K     = params["K"]
+    r     = params["r"]
+    q     = params["q"]
+    λ     = params["lambda"]
+    μJ    = params["muJ"]
+    δJ    = params["deltaJ"]
+    v0    = params["v0"]
+    kappa = params["kappa"]
+    theta = params["theta"]
+    sigma = params["sigma"]
+    rho   = params["rho"]
+    T     = params["T"]
+
+    iu = 1j * u
+
+    alpha = -0.5 * (u**2 + iu)
+    beta  = kappa - rho * sigma * iu
+    gamma = 0.5 * sigma**2
+    d     = np.sqrt(beta**2 - 4.0 * alpha * gamma)
+    g     = (beta - d) / (beta + d)
+    exp_dT = np.exp(-d * T)
+    C = ((kappa*theta/gamma)*((beta-d)*T - 2*np.log((1-g*exp_dT)/(1-g))))
+    D = ((beta-d)/gamma) * ((1-exp_dT)/(1-g*exp_dT))
+
+    r_tilde = r - q - λ*(np.exp(μJ + 0.5*δJ**2) - 1)
+    drift  = r_tilde * iu * T
+    
+    jump_cf   = np.exp(iu*μJ - 0.5*(u**2)*δJ**2)
+    jump_term = λ * T * (jump_cf - 1)
+    
+    C = drift + C + jump_term
+    
+    return np.exp(C + D * v0 + iu * np.log(S0 * np.exp(-q * T)))
+
+def double_heston_charfunc(u, params):
+    S0 = params["S0"]
+    r  = params["r"]
+    q  = params["q"]
+    T  = params["T"]
+
+    # Parameters of variance process 1
+    v01    = params["v01"]
+    kappa1 = params["kappa1"]
+    theta1 = params["theta1"]
+    sigma1 = params["sigma1"]
+    rho1   = params["rho1"]
+
+    # Parameters of variance process 2
+    v02    = params["v02"]
+    kappa2 = params["kappa2"]
+    theta2 = params["theta2"]
+    sigma2 = params["sigma2"]
+    rho2   = params["rho2"]
+
+    iu = 1j * u
+
+    # Helper to compute C and D for each variance component
+    def _terms(kappa, theta, sigma, rho):
+        alpha = -0.5 * (u**2 + iu)
+        beta  = kappa - rho * sigma * iu
+        gamma = 0.5 * sigma**2
+        d     = np.sqrt(beta**2 - 4.0 * alpha * gamma)
+        g     = (beta - d) / (beta + d)
+        exp_dT = np.exp(-d * T)
+
+        C = (kappa * theta / gamma) * ((beta - d) * T - 2.0 * np.log((1.0 - g * exp_dT) / (1.0 - g)))
+        D = (beta - d) / gamma * ((1.0 - exp_dT) / (1.0 - g * exp_dT))
+        return C, D
+
+    # Compute C and D for both factors
+    C1, D1 = _terms(kappa1, theta1, sigma1, rho1)
+    C2, D2 = _terms(kappa2, theta2, sigma2, rho2)
+
+    # Combine
+    C_total = (r - q) * iu * T + C1 + C2
+    D_total = D1 * v01 + D2 * v02
+
+    return np.exp(C_total + D_total + iu * np.log(S0 * np.exp(-q * T)))
+
 def heston_price_call_fft(params, N=10000, U_max=1000):
     S0 = params["S0"]
     r  = params["r"]
@@ -70,6 +151,72 @@ def heston_price_call_fft(params, N=10000, U_max=1000):
     put = K*np.exp(-r*T)*(1-P2) - S0*np.exp(-q*T)*(1-P1)
     return call, put
 
+def heston_price_call_fft_bates(params, N=10000, U_max=1000):
+    S0 = params["S0"]
+    r  = params["r"]
+    q  = params["q"]
+    T  = params["T"]
+    K  = params["K"]
+
+    if N % 2 == 1:
+        N += 1
+
+    u = np.linspace(1e-10, U_max, N + 1)
+    du = u[1] - u[0]
+
+    lnK = np.log(K)
+    phi_u     = heston_bates_charfunc(u, params)
+    phi_u_im1 = heston_bates_charfunc(u - 1j, params)
+    phi_im1   = heston_bates_charfunc(-1j, params)
+
+    integrand_P1 = np.real(np.exp(-1j * u * lnK) * phi_u_im1 / (1j * u * phi_im1))
+    integrand_P2 = np.real(np.exp(-1j * u * lnK) * phi_u / (1j * u))
+
+    weights = np.ones(N + 1)
+    weights[1:-1:2] = 4.0
+    weights[2:-2:2] = 2.0
+
+    P1 = 0.5 + (du / (3.0 * np.pi)) * np.sum(weights * integrand_P1)
+    P2 = 0.5 + (du / (3.0 * np.pi)) * np.sum(weights * integrand_P2)
+
+    call = S0 * np.exp(-q * T) * P1 - K * np.exp(-r * T) * P2
+    put  = K * np.exp(-r * T) * (1 - P2) - S0 * np.exp(-q * T) * (1 - P1)
+
+    return call, put
+
+def heston_price_call_fft_double_heston(params, N=10000, U_max=1000):
+    S0 = params["S0"]
+    r  = params["r"]
+    q  = params["q"]
+    T  = params["T"]
+    K  = params["K"]
+
+    if N % 2 == 1:
+        N += 1
+
+    u = np.linspace(1e-10, U_max, N + 1)
+    du = u[1] - u[0]
+    lnK = np.log(K)
+
+    phi_u     = double_heston_charfunc(u, params)
+    phi_u_im1 = double_heston_charfunc(u - 1j, params)
+    phi_im1   = double_heston_charfunc(-1j, params)
+
+    integrand_P1 = np.real(np.exp(-1j * u * lnK) * phi_u_im1 / (1j * u * phi_im1))
+    integrand_P2 = np.real(np.exp(-1j * u * lnK) * phi_u / (1j * u))
+
+    weights = np.ones(N + 1)
+    weights[1:-1:2] = 4.0
+    weights[2:-2:2] = 2.0
+
+    P1 = 0.5 + (du / (3.0 * np.pi)) * np.sum(weights * integrand_P1)
+    P2 = 0.5 + (du / (3.0 * np.pi)) * np.sum(weights * integrand_P2)
+
+    call = S0 * np.exp(-q * T) * P1 - K * np.exp(-r * T) * P2
+    put  = K * np.exp(-r * T) * (1 - P2) - S0 * np.exp(-q * T) * (1 - P1)
+
+    return call, put
+
 def bs_call_price(S, K, r, q, sigma, T):
     d1 = (np.log(S/K) + (r - q + 0.5*sigma**2)*T) / (sigma*np.sqrt(T))
     d2 = d1 - sigma*np.sqrt(T)
@@ -85,6 +232,38 @@ def pack_params(x, S0, r, q):
         "theta": x[2],
         "sigma": x[3],
         "rho": x[4],
+    }
+
+def pack_params_bates(x, S0, r, q):
+    return {
+        "S0": S0,
+        "r": r,
+        "q": q,
+        "v0": x[0],
+        "kappa": x[1],
+        "theta": x[2],
+        "sigma": x[3],
+        "rho": x[4],
+        "lambda": x[5],
+        "muJ": x[6],
+        "deltaJ": x[7]
+    }
+
+def pack_params_double_heston(x, S0, r, q):
+    return {
+        "S0": S0,
+        "r": r,
+        "q": q,
+        "v01": x[0],
+        "kappa1": x[1],
+        "theta1": x[2],
+        "sigma1": x[3],
+        "rho1": x[4],
+        "v02": x[5],
+        "kappa2": x[6],
+        "theta2": x[7],
+        "sigma2": x[8],
+        "rho2": x[9],
     }
 
 @app.route('/')
@@ -106,10 +285,12 @@ def get_sheet_name(file):
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file uploaded'}), 400
+    if 'file' not in request.files or 'model' not in request.form:
+        return jsonify({'error': 'No file uploaded or model not specified'}), 400
     
     file = request.files['file']
+    model = request.form['model']
+    
     if file.filename == '':
         return jsonify({'error': 'No file selected'}), 400
 
@@ -127,28 +308,74 @@ def upload_file():
         
         market_data = extract_market_data(wb)
         
-        x0 = np.array([0.04, 1.0, 0.04, 0.5, -0.5])
-        lb = [1e-4, 1e-4, 1e-4, 1e-4, -0.999]
-        ub = [2.0, 10.0, 2.0, 5.0, 0.999]
+        if model == 'heston':
+            x0 = np.array([0.04, 1.0, 0.04, 0.5, -0.5])
+            lb = [1e-4, 1e-4, 1e-4, 1e-4, -0.999]
+            ub = [2.0, 10.0, 2.0, 5.0, 0.999]
+            residuals_func = lambda x: residuals(x, market_data, S0, r, q)
+        elif model == 'heston-bates':
+            x0 = np.array([0.04, 1.0, 0.04, 0.5, -0.5, 0.1, -0.02, 0.1])
+            lb = [1e-4, 1e-4, 1e-4, 1e-4, -0.999, 0.0, -1.0, 1e-4]
+            ub = [2.0, 10.0, 2.0, 5.0, 0.999, 5.0, 1.0, 5.0]
+            residuals_func = lambda x: residuals_bates(x, market_data, S0, r, q)
+        else:  # double-heston
+            x0 = np.array([0.04, 1.0, 0.04, 0.5, -0.5, 0.04, 1.0, 0.04, 0.5, -0.5])
+            lb = [1e-4, 1e-4, 1e-4, 1e-4, -0.999, 1e-4, 1e-4, 1e-4, 1e-4, -0.999]
+            ub = [2.0, 10.0, 2.0, 5.0, 0.999, 2.0, 10.0, 2.0, 5.0, 0.999]
+            residuals_func = lambda x: residuals_double_heston(x, market_data, S0, r, q)
         
         opt = least_squares(
-            lambda x: residuals(x, market_data, S0, r, q),
+            residuals_func,
             x0,
             bounds=(lb, ub),
             xtol=1e-6,
             ftol=1e-6,
         )
         
-        calibrated_params = {
-            'v0': float(opt.x[0]),
-            'kappa': float(opt.x[1]),
-            'theta': float(opt.x[2]),
-            'sigma': float(opt.x[3]),
-            'rho': float(opt.x[4]),
-            'S0': S0,
-            'r': r,
-            'q': q
-        }
+        if model == 'heston':
+            calibrated_params = {
+                'model': 'heston',
+                'v0': float(opt.x[0]),
+                'kappa': float(opt.x[1]),
+                'theta': float(opt.x[2]),
+                'sigma': float(opt.x[3]),
+                'rho': float(opt.x[4]),
+                'S0': S0,
+                'r': r,
+                'q': q
+            }
+        elif model == 'heston-bates':
+            calibrated_params = {
+                'model': 'heston-bates',
+                'v0': float(opt.x[0]),
+                'kappa': float(opt.x[1]),
+                'theta': float(opt.x[2]),
+                'sigma': float(opt.x[3]),
+                'rho': float(opt.x[4]),
+                'lambda': float(opt.x[5]),
+                'muJ': float(opt.x[6]),
+                'deltaJ': float(opt.x[7]),
+                'S0': S0,
+                'r': r,
+                'q': q
+            }
+        else:
+            calibrated_params = {
+                'model': 'double-heston',
+                'v01': float(opt.x[0]),
+                'kappa1': float(opt.x[1]),
+                'theta1': float(opt.x[2]),
+                'sigma1': float(opt.x[3]),
+                'rho1': float(opt.x[4]),
+                'v02': float(opt.x[5]),
+                'kappa2': float(opt.x[6]),
+                'theta2': float(opt.x[7]),
+                'sigma2': float(opt.x[8]),
+                'rho2': float(opt.x[9]),
+                'S0': S0,
+                'r': r,
+                'q': q
+            }
         
         return jsonify(calibrated_params)
         
@@ -157,11 +384,12 @@ def upload_file():
 
 @app.route('/select-sheet', methods=['POST'])
 def select_sheet():
-    if 'file' not in request.files or 'sheet_name' not in request.form:
-        return jsonify({'error': 'Missing file or sheet name'}), 400
+    if 'file' not in request.files or 'sheet_name' not in request.form or 'model' not in request.form:
+        return jsonify({'error': 'Missing file, sheet name or model'}), 400
     
     file = request.files['file']
     sheet_name = request.form['sheet_name']
+    model = request.form['model']
     
     try:
         wb = pd.read_excel(file, header=None, sheet_name=sheet_name)
@@ -172,28 +400,74 @@ def select_sheet():
         
         market_data = extract_market_data(wb)
         
-        x0 = np.array([0.04, 1.0, 0.04, 0.5, -0.5])
-        lb = [1e-4, 1e-4, 1e-4, 1e-4, -0.999]
-        ub = [2.0, 10.0, 2.0, 5.0, 0.999]
+        if model == 'heston':
+            x0 = np.array([0.04, 1.0, 0.04, 0.5, -0.5])
+            lb = [1e-4, 1e-4, 1e-4, 1e-4, -0.999]
+            ub = [2.0, 10.0, 2.0, 5.0, 0.999]
+            residuals_func = lambda x: residuals(x, market_data, S0, r, q)
+        elif model == 'heston-bates':
+            x0 = np.array([0.04, 1.0, 0.04, 0.5, -0.5, 0.1, -0.02, 0.1])
+            lb = [1e-4, 1e-4, 1e-4, 1e-4, -0.999, 0.0, -1.0, 1e-4]
+            ub = [2.0, 10.0, 2.0, 5.0, 0.999, 5.0, 1.0, 5.0]
+            residuals_func = lambda x: residuals_bates(x, market_data, S0, r, q)
+        else:  # double-heston
+            x0 = np.array([0.04, 1.0, 0.04, 0.5, -0.5, 0.04, 1.0, 0.04, 0.5, -0.5])
+            lb = [1e-4, 1e-4, 1e-4, 1e-4, -0.999, 1e-4, 1e-4, 1e-4, 1e-4, -0.999]
+            ub = [2.0, 10.0, 2.0, 5.0, 0.999, 2.0, 10.0, 2.0, 5.0, 0.999]
+            residuals_func = lambda x: residuals_double_heston(x, market_data, S0, r, q)
         
         opt = least_squares(
-            lambda x: residuals(x, market_data, S0, r, q),
+            residuals_func,
             x0,
             bounds=(lb, ub),
             xtol=1e-6,
             ftol=1e-6,
         )
         
-        calibrated_params = {
-            'v0': float(opt.x[0]),
-            'kappa': float(opt.x[1]),
-            'theta': float(opt.x[2]),
-            'sigma': float(opt.x[3]),
-            'rho': float(opt.x[4]),
-            'S0': S0,
-            'r': r,
-            'q': q
-        }
+        if model == 'heston':
+            calibrated_params = {
+                'model': 'heston',
+                'v0': float(opt.x[0]),
+                'kappa': float(opt.x[1]),
+                'theta': float(opt.x[2]),
+                'sigma': float(opt.x[3]),
+                'rho': float(opt.x[4]),
+                'S0': S0,
+                'r': r,
+                'q': q
+            }
+        elif model == 'heston-bates':
+            calibrated_params = {
+                'model': 'heston-bates',
+                'v0': float(opt.x[0]),
+                'kappa': float(opt.x[1]),
+                'theta': float(opt.x[2]),
+                'sigma': float(opt.x[3]),
+                'rho': float(opt.x[4]),
+                'lambda': float(opt.x[5]),
+                'muJ': float(opt.x[6]),
+                'deltaJ': float(opt.x[7]),
+                'S0': S0,
+                'r': r,
+                'q': q
+            }
+        else:
+            calibrated_params = {
+                'model': 'double-heston',
+                'v01': float(opt.x[0]),
+                'kappa1': float(opt.x[1]),
+                'theta1': float(opt.x[2]),
+                'sigma1': float(opt.x[3]),
+                'rho1': float(opt.x[4]),
+                'v02': float(opt.x[5]),
+                'kappa2': float(opt.x[6]),
+                'theta2': float(opt.x[7]),
+                'sigma2': float(opt.x[8]),
+                'rho2': float(opt.x[9]),
+                'S0': S0,
+                'r': r,
+                'q': q
+            }
         
         return jsonify(calibrated_params)
         
@@ -203,22 +477,61 @@ def select_sheet():
 @app.route('/price', methods=['POST'])
 def calculate_price():
     data = request.json
+    model = data.get('model', 'heston')
     
-    params = {
-        'S0': float(data['S0']),
-        'K': float(data['K']),
-        'T': float(data['T']),
-        'r': float(data['r']),
-        'q': float(data['q']),
-        'v0': float(data['v0']),
-        'kappa': float(data['kappa']),
-        'theta': float(data['theta']),
-        'sigma': float(data['sigma']),
-        'rho': float(data['rho'])
-    }
+    if model == 'heston':
+        params = {
+            'S0': float(data['S0']),
+            'K': float(data['K']),
+            'T': float(data['T']),
+            'r': float(data['r']),
+            'q': float(data['q']),
+            'v0': float(data['v0']),
+            'kappa': float(data['kappa']),
+            'theta': float(data['theta']),
+            'sigma': float(data['sigma']),
+            'rho': float(data['rho'])
+        }
+        pricing_func = heston_price_call_fft
+    elif model == 'heston-bates':
+        params = {
+            'S0': float(data['S0']),
+            'K': float(data['K']),
+            'T': float(data['T']),
+            'r': float(data['r']),
+            'q': float(data['q']),
+            'v0': float(data['v0']),
+            'kappa': float(data['kappa']),
+            'theta': float(data['theta']),
+            'sigma': float(data['sigma']),
+            'rho': float(data['rho']),
+            'lambda': float(data['lambda']),
+            'muJ': float(data['muJ']),
+            'deltaJ': float(data['deltaJ'])
+        }
+        pricing_func = heston_price_call_fft_bates
+    else:  # double-heston
+        params = {
+            'S0': float(data['S0']),
+            'K': float(data['K']),
+            'T': float(data['T']),
+            'r': float(data['r']),
+            'q': float(data['q']),
+            'v01': float(data['v01']),
+            'kappa1': float(data['kappa1']),
+            'theta1': float(data['theta1']),
+            'sigma1': float(data['sigma1']),
+            'rho1': float(data['rho1']),
+            'v02': float(data['v02']),
+            'kappa2': float(data['kappa2']),
+            'theta2': float(data['theta2']),
+            'sigma2': float(data['sigma2']),
+            'rho2': float(data['rho2'])
+        }
+        pricing_func = heston_price_call_fft_double_heston
     
     try:
-        call, put = heston_price_call_fft(params)
+        call, put = pricing_func(params)
         return jsonify({
             'call': float(call),
             'put': float(put)
@@ -281,6 +594,26 @@ def residuals(x, market_data, S0, r, q):
         params = params_base.copy()
         params.update({"T": T, "K": K})
         model_call, _ = heston_price_call_fft(params, N=1000, U_max=2000)
+        res.append(model_call - mkt_price)
+    return np.array(res)
+
+def residuals_bates(x, market_data, S0, r, q):
+    params_base = pack_params_bates(x, S0, r, q)
+    res = []
+    for T, K, mkt_price in market_data:
+        params = params_base.copy()
+        params.update({"T": T, "K": K})
+        model_call, _ = heston_price_call_fft_bates(params, N=1000, U_max=2000)
+        res.append(model_call - mkt_price)
+    return np.array(res)
+
+def residuals_double_heston(x, market_data, S0, r, q):
+    params_base = pack_params_double_heston(x, S0, r, q)
+    res = []
+    for T, K, mkt_price in market_data:
+        params = params_base.copy()
+        params.update({"T": T, "K": K})
+        model_call, _ = heston_price_call_fft_double_heston(params, N=2000, U_max=2000)
         res.append(model_call - mkt_price)
     return np.array(res)
 

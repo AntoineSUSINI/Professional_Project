@@ -13,6 +13,14 @@
         <div class="upload-section">
             <h2>1. Upload Market Data</h2>
             <form id="upload-form">
+                <div class="form-group">
+                    <label for="model">Select Model:</label>
+                    <select id="model" name="model">
+                        <option value="heston">Heston</option>
+                        <option value="heston-bates">Heston-Bates</option>
+                        <option value="double-heston">Double Heston</option>
+                    </select>
+                </div>
                 <input type="file" id="excel-file" accept=".xlsx,.xls">
                 <button type="submit">Upload and Calibrate</button>
             </form>

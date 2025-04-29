@@ -4,8 +4,10 @@ document.getElementById('upload-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     
     const fileInput = document.getElementById('excel-file');
+    const modelSelect = document.getElementById('model');
     const formData = new FormData();
     formData.append('file', fileInput.files[0]);
+    formData.append('model', modelSelect.value);
     
     try {
         const response = await fetch('/upload', {
@@ -16,10 +18,8 @@ document.getElementById('upload-form').addEventListener('submit', async (e) => {
         const data = await response.json();
         if (response.ok) {
             if (data.multiple_sheets) {
-                // Afficher la sélection de feuille
-                showSheetSelector(data.sheets, fileInput.files[0]);
+                showSheetSelector(data.sheets, fileInput.files[0], modelSelect.value);
             } else {
-                // Continuer avec les paramètres calibrés
                 calibratedParams = data;
                 displayCalibratedParams(data);
                 document.querySelector('.parameters-section').style.display = 'block';
@@ -72,18 +72,49 @@ document.getElementById('pricing-form').addEventListener('submit', async (e) => 
 
 function displayCalibratedParams(params) {
     const paramsDiv = document.getElementById('calibrated-params');
-    paramsDiv.innerHTML = `
-        <p>v0: ${params.v0.toFixed(4)}</p>
-        <p>kappa: ${params.kappa.toFixed(4)}</p>
-        <p>theta: ${params.theta.toFixed(4)}</p>
-        <p>sigma: ${params.sigma.toFixed(4)}</p>
-        <p>rho: ${params.rho.toFixed(4)}</p>
+    let html = `
         <p>r: ${params.r.toFixed(4)}</p>
         <p>q: ${params.q.toFixed(4)}</p>
     `;
+
+    if (params.model === 'heston') {
+        html += `
+            <p>v0: ${params.v0.toFixed(4)}</p>
+            <p>kappa: ${params.kappa.toFixed(4)}</p>
+            <p>theta: ${params.theta.toFixed(4)}</p>
+            <p>sigma: ${params.sigma.toFixed(4)}</p>
+            <p>rho: ${params.rho.toFixed(4)}</p>
+        `;
+    } else if (params.model === 'heston-bates') {
+        html += `
+            <p>v0: ${params.v0.toFixed(4)}</p>
+            <p>kappa: ${params.kappa.toFixed(4)}</p>
+            <p>theta: ${params.theta.toFixed(4)}</p>
+            <p>sigma: ${params.sigma.toFixed(4)}</p>
+            <p>rho: ${params.rho.toFixed(4)}</p>
+            <p>lambda: ${params.lambda.toFixed(4)}</p>
+            <p>muJ: ${params.muJ.toFixed(4)}</p>
+            <p>deltaJ: ${params.deltaJ.toFixed(4)}</p>
+        `;
+    } else if (params.model === 'double-heston') {
+        html += `
+            <p>v01: ${params.v01.toFixed(4)}</p>
+            <p>kappa1: ${params.kappa1.toFixed(4)}</p>
+            <p>theta1: ${params.theta1.toFixed(4)}</p>
+            <p>sigma1: ${params.sigma1.toFixed(4)}</p>
+            <p>rho1: ${params.rho1.toFixed(4)}</p>
+            <p>v02: ${params.v02.toFixed(4)}</p>
+            <p>kappa2: ${params.kappa2.toFixed(4)}</p>
+            <p>theta2: ${params.theta2.toFixed(4)}</p>
+            <p>sigma2: ${params.sigma2.toFixed(4)}</p>
+            <p>rho2: ${params.rho2.toFixed(4)}</p>
+        `;
+    }
+    
+    paramsDiv.innerHTML = html;
 }
 
-function showSheetSelector(sheets, file) {
+function showSheetSelector(sheets, file, model) {
     const selector = document.createElement('div');
     selector.className = 'sheet-selector';
     selector.innerHTML = `
@@ -91,7 +122,7 @@ function showSheetSelector(sheets, file) {
         <select id="sheet-select">
             ${sheets.map(sheet => `<option value="${sheet}">${sheet}</option>`).join('')}
         </select>
-        <button onclick="selectSheet('${file}')">Confirm</button>
+        <button onclick="selectSheet()">Confirm</button>
     `;
     
     document.querySelector('.upload-section').appendChild(selector);
@@ -100,10 +131,12 @@ function showSheetSelector(sheets, file) {
 async function selectSheet() {
     const fileInput = document.getElementById('excel-file');
     const sheetSelect = document.getElementById('sheet-select');
+    const modelSelect = document.getElementById('model');
     const formData = new FormData();
     
     formData.append('file', fileInput.files[0]);
     formData.append('sheet_name', sheetSelect.value);
+    formData.append('model', modelSelect.value);
     
     try {
         const response = await fetch('/select-sheet', {

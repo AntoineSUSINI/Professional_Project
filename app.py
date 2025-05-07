@@ -8,42 +8,37 @@ app = Flask(__name__)
 
 def heston_charfunc(u, params):
     S0   = params["S0"]
-    K    = params["K"]
     r    = params["r"]
     q    = params["q"]
+    T    = params["T"]
     v0   = params["v0"]
     kappa= params["kappa"]
     theta= params["theta"]
     sigma= params["sigma"]
     rho  = params["rho"]
-    T    = params["T"]
 
     iu = 1j * u
-
-    alpha = -0.5 * (u**2 + iu)
-    beta  = kappa - rho * sigma * iu
-    gamma = 0.5 * sigma**2
-
-    d = np.sqrt(beta**2 - 4.0 * alpha * gamma)
-    g = (beta - d) / (beta + d)
+    b  = kappa - rho * sigma * iu
+    d  = np.sqrt(b**2 + sigma**2 * (u**2 + iu))
+    g  = (b - d) / (b + d)
 
     exp_dT = np.exp(-d * T)
 
-    C = (r - q) * iu * T + \
-        (kappa * theta / gamma) * ((beta - d) * T - 2.0 * np.log((1.0 - g * exp_dT) / (1.0 - g)))
+    C = iu * (r - q) * T \
+        + (kappa * theta / sigma**2) * ((b - d) * T
+           - 2.0 * np.log((1.0 - g * exp_dT) / (1.0 - g)))
 
-    D = (beta - d) / gamma * ((1.0 - exp_dT) / (1.0 - g * exp_dT))
+    D = (b - d) / sigma**2 * ((1.0 - exp_dT) / (1.0 - g * exp_dT))
 
-    return np.exp(C + D * v0 + iu * np.log(S0 * np.exp(-q * T)))
+    return np.exp(C + D * v0 + iu * np.log(S0))
 
 def heston_bates_charfunc(u, params):
     S0    = params["S0"]
-    K     = params["K"]
     r     = params["r"]
     q     = params["q"]
-    λ     = params["lambda"]
-    μJ    = params["muJ"]
-    δJ    = params["deltaJ"]
+    lam     = params["lambda"]
+    muJ    = params["muJ"]
+    deltaJ    = params["deltaJ"]
     v0    = params["v0"]
     kappa = params["kappa"]
     theta = params["theta"]
@@ -53,24 +48,23 @@ def heston_bates_charfunc(u, params):
 
     iu = 1j * u
 
-    alpha = -0.5 * (u**2 + iu)
-    beta  = kappa - rho * sigma * iu
-    gamma = 0.5 * sigma**2
-    d     = np.sqrt(beta**2 - 4.0 * alpha * gamma)
-    g     = (beta - d) / (beta + d)
-    exp_dT = np.exp(-d * T)
-    C = ((kappa*theta/gamma)*((beta-d)*T - 2*np.log((1-g*exp_dT)/(1-g))))
-    D = ((beta-d)/gamma) * ((1-exp_dT)/(1-g*exp_dT))
+    b  = kappa - rho * sigma * iu
+    d  = np.sqrt(b**2 + sigma**2 * (u**2 + iu))
+    g  = (b - d) / (b + d)
+    e_dT = np.exp(-d * T)
 
-    r_tilde = r - q - λ*(np.exp(μJ + 0.5*δJ**2) - 1)
-    drift  = r_tilde * iu * T
-    
-    jump_cf   = np.exp(iu*μJ - 0.5*(u**2)*δJ**2)
-    jump_term = λ * T * (jump_cf - 1)
-    
-    C = drift + C + jump_term
-    
-    return np.exp(C + D * v0 + iu * np.log(S0 * np.exp(-q * T)))
+    C = iu * (r - q) * T \
+        + (kappa * theta / sigma**2) * (
+            (b - d) * T - 2.0 * np.log((1.0 - g * e_dT) / (1.0 - g))
+        )
+    D = (b - d) / sigma**2 * ((1.0 - e_dT) / (1.0 - g * e_dT))
+
+
+    jump_cf = np.exp(iu * muJ - 0.5 * deltaJ**2 * u**2)   # φ_J(u)
+    C += lam * T * (jump_cf - 1.0)                        # λT(φ_J(u)‑1)
+
+
+    return np.exp(C + D * v0 + iu * np.log(S0))
 
 def double_heston_charfunc(u, params):
     S0 = params["S0"]
@@ -94,28 +88,26 @@ def double_heston_charfunc(u, params):
 
     iu = 1j * u
 
-    # Helper to compute C and D for each variance component
-    def _terms(kappa, theta, sigma, rho):
-        alpha = -0.5 * (u**2 + iu)
-        beta  = kappa - rho * sigma * iu
-        gamma = 0.5 * sigma**2
-        d     = np.sqrt(beta**2 - 4.0 * alpha * gamma)
-        g     = (beta - d) / (beta + d)
-        exp_dT = np.exp(-d * T)
+    # --- Fonction auxiliaire pour un facteur « Heston‑like » ---
+    def _C_D(kappa, theta, sigma, rho):
+        b = kappa - rho * sigma * iu
+        d = np.sqrt(b**2 + sigma**2 * (u**2 + iu))
+        g = (b - d) / (b + d)
+        e_dT = np.exp(-d * T)
 
-        C = (kappa * theta / gamma) * ((beta - d) * T - 2.0 * np.log((1.0 - g * exp_dT) / (1.0 - g)))
-        D = (beta - d) / gamma * ((1.0 - exp_dT) / (1.0 - g * exp_dT))
+        C = (kappa * theta / sigma**2) * (
+            (b - d) * T - 2.0 * np.log((1.0 - g * e_dT) / (1.0 - g))
+        )
+        D = (b - d) / sigma**2 * ((1.0 - e_dT) / (1.0 - g * e_dT))
         return C, D
 
-    # Compute C and D for both factors
-    C1, D1 = _terms(kappa1, theta1, sigma1, rho1)
-    C2, D2 = _terms(kappa2, theta2, sigma2, rho2)
+    C1, D1 = _C_D(kappa1, theta1, sigma1, rho1)
+    C2, D2 = _C_D(kappa2, theta2, sigma2, rho2)
 
-    # Combine
-    C_total = (r - q) * iu * T + C1 + C2
-    D_total = D1 * v01 + D2 * v02
+    C_total = iu * (r - q) * T + C1 + C2
 
-    return np.exp(C_total + D_total + iu * np.log(S0 * np.exp(-q * T)))
+    # φ(u) complet
+    return np.exp(C_total + D1 * v01 + D2 * v02 + iu * np.log(S0))
 
 def heston_price_call_fft(params, N=10000, U_max=1000):
     S0 = params["S0"]
@@ -124,22 +116,26 @@ def heston_price_call_fft(params, N=10000, U_max=1000):
     T  = params["T"]
     K  = params["K"]
 
+    # règle de Simpson : N doit être pair
     if N % 2 == 1:
         N += 1
 
-    u = np.linspace(1e-10, U_max, N + 1)  # avoid u=0 singularity
-    du = u[1] - u[0]
+    u   = np.linspace(1e-10, U_max, N + 1)      # éviter u=0
+    du  = u[1] - u[0]
     lnK = np.log(K)
 
     phi_u     = heston_charfunc(u, params)
     phi_u_im1 = heston_charfunc(u - 1j, params)
     phi_im1   = heston_charfunc(-1j, params)
 
-    integrand_P1 = np.real(np.exp(-1j * u * lnK) * phi_u_im1 /
-                           (1j * u * phi_im1))
-    integrand_P2 = np.real(np.exp(-1j * u * lnK) * phi_u /
-                           (1j * u))
+    integrand_P1 = np.real(
+        np.exp(-1j * u * lnK) * phi_u_im1 / (1j * u * phi_im1)
+    )
+    integrand_P2 = np.real(
+        np.exp(-1j * u * lnK) * phi_u / (1j * u)
+    )
 
+    # poids de Simpson (1,4,2,4,2,...,4,1)
     weights = np.ones(N + 1)
     weights[1:-1:2] = 4.0
     weights[2:-2:2] = 2.0
@@ -148,8 +144,10 @@ def heston_price_call_fft(params, N=10000, U_max=1000):
     P2 = 0.5 + (du / (3.0 * np.pi)) * np.sum(weights * integrand_P2)
 
     call = S0 * np.exp(-q * T) * P1 - K * np.exp(-r * T) * P2
-    put = K*np.exp(-r*T)*(1-P2) - S0*np.exp(-q*T)*(1-P1)
+    put  = K * np.exp(-r * T) * (1.0 - P2) - S0 * np.exp(-q * T) * (1.0 - P1)
+
     return call, put
+
 
 def heston_price_call_fft_bates(params, N=10000, U_max=1000):
     S0 = params["S0"]
@@ -158,20 +156,26 @@ def heston_price_call_fft_bates(params, N=10000, U_max=1000):
     T  = params["T"]
     K  = params["K"]
 
+    # Simpson : exiger N pair
     if N % 2 == 1:
         N += 1
 
-    u = np.linspace(1e-10, U_max, N + 1)
+    u  = np.linspace(1e-10, U_max, N + 1)   # éviter u = 0
     du = u[1] - u[0]
-
     lnK = np.log(K)
-    phi_u     = heston_bates_charfunc(u, params)
-    phi_u_im1 = heston_bates_charfunc(u - 1j, params)
-    phi_im1   = heston_bates_charfunc(-1j, params)
 
-    integrand_P1 = np.real(np.exp(-1j * u * lnK) * phi_u_im1 / (1j * u * phi_im1))
-    integrand_P2 = np.real(np.exp(-1j * u * lnK) * phi_u / (1j * u))
+    phi_u      = heston_bates_charfunc(u, params)
+    phi_u_im1  = heston_bates_charfunc(u - 1j, params)
+    phi_im1    = heston_bates_charfunc(-1j, params)
 
+    integrand_P1 = np.real(
+        np.exp(-1j * u * lnK) * phi_u_im1 / (1j * u * phi_im1)
+    )
+    integrand_P2 = np.real(
+        np.exp(-1j * u * lnK) * phi_u / (1j * u)
+    )
+
+    # poids de Simpson (1,4,2,4,2,...,4,1)
     weights = np.ones(N + 1)
     weights[1:-1:2] = 4.0
     weights[2:-2:2] = 2.0
@@ -180,7 +184,7 @@ def heston_price_call_fft_bates(params, N=10000, U_max=1000):
     P2 = 0.5 + (du / (3.0 * np.pi)) * np.sum(weights * integrand_P2)
 
     call = S0 * np.exp(-q * T) * P1 - K * np.exp(-r * T) * P2
-    put  = K * np.exp(-r * T) * (1 - P2) - S0 * np.exp(-q * T) * (1 - P1)
+    put  = K * np.exp(-r * T) * (1.0 - P2) - S0 * np.exp(-q * T) * (1.0 - P1)
 
     return call, put
 
@@ -191,31 +195,32 @@ def heston_price_call_fft_double_heston(params, N=10000, U_max=1000):
     T  = params["T"]
     K  = params["K"]
 
+    # Simpson -> N pair
     if N % 2 == 1:
         N += 1
 
-    u = np.linspace(1e-10, U_max, N + 1)
+    u  = np.linspace(1e-10, U_max, N + 1)
     du = u[1] - u[0]
     lnK = np.log(K)
 
-    phi_u     = double_heston_charfunc(u, params)
-    phi_u_im1 = double_heston_charfunc(u - 1j, params)
-    phi_im1   = double_heston_charfunc(-1j, params)
+    φ_u      = double_heston_charfunc(u, params)
+    φ_u_im1  = double_heston_charfunc(u - 1j, params)
+    φ_im1    = double_heston_charfunc(-1j, params)
 
-    integrand_P1 = np.real(np.exp(-1j * u * lnK) * phi_u_im1 / (1j * u * phi_im1))
-    integrand_P2 = np.real(np.exp(-1j * u * lnK) * phi_u / (1j * u))
+    I1 = np.real(np.exp(-1j * u * lnK) * φ_u_im1 / (1j * u * φ_im1))
+    I2 = np.real(np.exp(-1j * u * lnK) * φ_u / (1j * u))
 
-    weights = np.ones(N + 1)
-    weights[1:-1:2] = 4.0
-    weights[2:-2:2] = 2.0
+    w = np.ones(N + 1)
+    w[1:-1:2] = 4.0
+    w[2:-2:2] = 2.0
 
-    P1 = 0.5 + (du / (3.0 * np.pi)) * np.sum(weights * integrand_P1)
-    P2 = 0.5 + (du / (3.0 * np.pi)) * np.sum(weights * integrand_P2)
+    P1 = 0.5 + (du / (3 * np.pi)) * np.sum(w * I1)
+    P2 = 0.5 + (du / (3 * np.pi)) * np.sum(w * I2)
 
     call = S0 * np.exp(-q * T) * P1 - K * np.exp(-r * T) * P2
-    put  = K * np.exp(-r * T) * (1 - P2) - S0 * np.exp(-q * T) * (1 - P1)
-
+    put  = K * np.exp(-r * T) * (1.0 - P2) - S0 * np.exp(-q * T) * (1.0 - P1)
     return call, put
+
 
 def bs_call_price(S, K, r, q, sigma, T):
     d1 = (np.log(S/K) + (r - q + 0.5*sigma**2)*T) / (sigma*np.sqrt(T))

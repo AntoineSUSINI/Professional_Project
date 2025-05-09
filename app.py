@@ -221,6 +221,95 @@ def heston_price_call_fft_double_heston(params, N=10000, U_max=1000):
     put  = K * np.exp(-r * T) * (1.0 - P2) - S0 * np.exp(-q * T) * (1.0 - P1)
     return call, put
 
+def heston_price_binary(S0, K, T, params, N=10000, U_max=1000):
+    """
+    Calcule le prix d'une option binaire (cash-or-nothing) call/put sous Heston.
+    """
+    params = params.copy()
+    params["S0"] = S0
+    params["K"] = K
+    params["T"] = T
+    r = params["r"]
+
+    if N % 2 == 1:
+        N += 1
+
+    u = np.linspace(1e-10, U_max, N + 1)
+    du = u[1] - u[0]
+    lnK = np.log(K)
+
+    phi_u = heston_charfunc(u, params)
+    integrand = np.real(np.exp(-1j * u * lnK) * phi_u / (1j * u))
+
+    weights = np.ones(N + 1)
+    weights[1:-1:2] = 4.0
+    weights[2:-2:2] = 2.0
+
+    P2 = 0.5 + (du / (3.0 * np.pi)) * np.sum(weights * integrand)
+
+    binary_call = np.exp(-r * T) * P2
+    binary_put = np.exp(-r * T) * (1 - P2)
+    return binary_call, binary_put
+
+def heston_bates_price_binary(S0, K, T, params, N=10000, U_max=1000):
+    """
+    Calcule le prix d'une option binaire (cash-or-nothing) call/put sous Heston-Bates.
+    """
+    params = params.copy()
+    params["S0"] = S0
+    params["K"] = K
+    params["T"] = T
+    r = params["r"]
+
+    if N % 2 == 1:
+        N += 1
+
+    u = np.linspace(1e-10, U_max, N + 1)
+    du = u[1] - u[0]
+    lnK = np.log(K)
+
+    phi_u = heston_bates_charfunc(u, params)
+    integrand = np.real(np.exp(-1j * u * lnK) * phi_u / (1j * u))
+
+    weights = np.ones(N + 1)
+    weights[1:-1:2] = 4.0
+    weights[2:-2:2] = 2.0
+
+    P2 = 0.5 + (du / (3.0 * np.pi)) * np.sum(weights * integrand)
+
+    binary_call = np.exp(-r * T) * P2
+    binary_put = np.exp(-r * T) * (1 - P2)
+    return binary_call, binary_put
+
+def double_heston_price_binary(S0, K, T, params, N=10000, U_max=1000):
+    """
+    Calcule le prix d'une option binaire (cash-or-nothing) call/put sous Double Heston.
+    """
+    params = params.copy()
+    params["S0"] = S0
+    params["K"] = K
+    params["T"] = T
+    r = params["r"]
+
+    if N % 2 == 1:
+        N += 1
+
+    u = np.linspace(1e-10, U_max, N + 1)
+    du = u[1] - u[0]
+    lnK = np.log(K)
+
+    phi_u = double_heston_charfunc(u, params)
+    integrand = np.real(np.exp(-1j * u * lnK) * phi_u / (1j * u))
+
+    weights = np.ones(N + 1)
+    weights[1:-1:2] = 4.0
+    weights[2:-2:2] = 2.0
+
+    P2 = 0.5 + (du / (3.0 * np.pi)) * np.sum(weights * integrand)
+
+    binary_call = np.exp(-r * T) * P2
+    binary_put = np.exp(-r * T) * (1 - P2)
+    return binary_call, binary_put
 
 def bs_call_price(S, K, r, q, sigma, T):
     d1 = (np.log(S/K) + (r - q + 0.5*sigma**2)*T) / (sigma*np.sqrt(T))
@@ -483,7 +572,8 @@ def select_sheet():
 def calculate_price():
     data = request.json
     model = data.get('model', 'heston')
-    
+    option_type = data.get('option_type', 'vanilla')  # 'vanilla' ou 'binary'
+
     if model == 'heston':
         params = {
             'S0': float(data['S0']),
@@ -497,7 +587,10 @@ def calculate_price():
             'sigma': float(data['sigma']),
             'rho': float(data['rho'])
         }
-        pricing_func = heston_price_call_fft
+        if option_type == 'binary':
+            pricing_func = heston_price_binary
+        else:
+            pricing_func = heston_price_call_fft
     elif model == 'heston-bates':
         params = {
             'S0': float(data['S0']),
@@ -514,7 +607,10 @@ def calculate_price():
             'muJ': float(data['muJ']),
             'deltaJ': float(data['deltaJ'])
         }
-        pricing_func = heston_price_call_fft_bates
+        if option_type == 'binary':
+            pricing_func = heston_bates_price_binary
+        else:
+            pricing_func = heston_price_call_fft_bates
     else:  # double-heston
         params = {
             'S0': float(data['S0']),
@@ -533,10 +629,15 @@ def calculate_price():
             'sigma2': float(data['sigma2']),
             'rho2': float(data['rho2'])
         }
-        pricing_func = heston_price_call_fft_double_heston
-    
+        if option_type == 'binary':
+            pricing_func = double_heston_price_binary
+        else:
+            pricing_func = heston_price_call_fft_double_heston
+
     try:
-        call, put = pricing_func(params)
+        call, put = pricing_func(
+            params['S0'], params['K'], params['T'], params
+        ) if option_type == 'binary' else pricing_func(params)
         return jsonify({
             'call': float(call),
             'put': float(put)

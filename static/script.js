@@ -51,7 +51,8 @@ document.getElementById('pricing-form').addEventListener('submit', async (e) => 
         ...calibratedParams,
         S0: parseFloat(document.getElementById('spot').value),
         K: parseFloat(document.getElementById('strike').value),
-        T: parseFloat(document.getElementById('maturity').value)
+        T: parseFloat(document.getElementById('maturity').value),
+        option_type: document.getElementById('option-type').value // Ajout du type d'option
     };
     
     try {

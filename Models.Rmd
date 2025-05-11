@@ -1,0 +1,433 @@
+---
+title: "Professional Project"
+output: html_document
+date: "2025-05-11"
+---
+
+
+```{r}
+
+## Heston-Bates Model 
+
+# --- Librairies ---
+library(readxl)
+library(pracma)
+
+# --- Chargement des données ---
+file <- "market_data.xlsx"
+df_raw <- read_excel(file, sheet = "NDX-2014", col_names = FALSE)
+
+# --- Paramètres du marché ---
+S0 <- as.numeric(df_raw[3, 3])          # Spot price
+r  <- as.numeric(df_raw[1, 9])          # Taux sans risque
+q  <- as.numeric(df_raw[2, 9])          # Taux dividende
+
+# --- Données de volatilité implicite ---
+header_row <- 7
+strikes_abs <- as.numeric(df_raw[header_row, 4:10])
+maturities <- df_raw[(header_row + 1):(header_row + 10), 3]
+vol_data <- df_raw[(header_row + 1):(header_row + 10), 4:10]
+
+# --- Construction de la matrice ---
+vol_matrix <- as.matrix(vol_data)
+rownames(vol_matrix) <- gsub(" ", "", toupper(maturities[[1]]))
+colnames(vol_matrix) <- paste0(round(strikes_abs * 100), "%")
+
+# --- Nettoyage des labels valides ---
+labels <- rownames(vol_matrix)
+valid_labels <- grepl("^[0-9]+[MY]$", labels)
+vol_matrix <- vol_matrix[valid_labels, , drop = FALSE]
+
+# --- Fonction de conversion des maturités ---
+maturity_to_T <- function(label) {
+  if (grepl("M$", label)) return(as.numeric(gsub("M", "", label)) / 12)
+  if (grepl("Y$", label)) return(as.numeric(gsub("Y", "", label)))
+  stop(paste("Unknown format:", label))
+}
+
+# --- Construction du market data ---
+market_data <- data.frame()
+for (i in seq_len(nrow(vol_matrix))) {
+  T_val <- maturity_to_T(rownames(vol_matrix)[i])
+  for (j in seq_len(ncol(vol_matrix))) {
+    K <- strikes_abs[j]
+    vol <- as.numeric(vol_matrix[i, j]) / 100
+    market_data <- rbind(market_data, data.frame(T = T_val, K = K, vol = vol))
+  }
+}
+
+# --- Fonction caractéristique Heston-Bates ---
+heston_bates_charfunc <- function(u, params) {
+  S0 <- params$S0; r <- params$r; q <- params$q
+  lambda <- params$lambda; muJ <- params$muJ; deltaJ <- params$deltaJ
+  v0 <- params$v0; kappa <- params$kappa; theta <- params$theta
+  sigma <- params$sigma; rho <- params$rho; T <- params$T
+
+  iu <- 1i * u
+  alpha <- -0.5 * (u^2 + iu)
+  beta <- kappa - rho * sigma * iu
+  gamma <- 0.5 * sigma^2
+  d <- sqrt(beta^2 - 4 * alpha * gamma)
+  g <- (beta - d) / (beta + d)
+  exp_dT <- exp(-d * T)
+
+  C <- (kappa * theta / gamma) * ((beta - d) * T - 2 * log((1 - g * exp_dT) / (1 - g)))
+  D <- ((beta - d) / gamma) * ((1 - exp_dT) / (1 - g * exp_dT))
+
+  r_tilde <- r - q - lambda * (exp(muJ + 0.5 * deltaJ^2) - 1)
+  drift <- iu * r_tilde * T
+  jump_cf <- exp(iu * muJ - 0.5 * deltaJ^2 * u^2)
+  jump_term <- lambda * T * (jump_cf - 1)
+
+  C <- drift + C + jump_term
+  return(exp(C + D * v0 + iu * log(S0 * exp(-q * T))))
+}
+
+heston_price_call_bates <- function(params, N = 10000, U_max = 1000) {
+  S0 <- params$S0; r <- params$r; q <- params$q
+  T <- params$T; K <- params$K
+
+  if (N %% 2 == 1) N <- N + 1
+
+  u <- seq(1e-10, U_max, length.out = N + 1)
+  du <- u[2] - u[1]
+  lnK <- log(K)
+
+  phi_u     <- heston_bates_charfunc(u, params)
+  phi_u_im1 <- heston_bates_charfunc(u - 1i, params)
+  phi_im1   <- heston_bates_charfunc(-1i, params)
+
+  integrand_P1 <- Re(exp(-1i * u * lnK) * phi_u_im1 / (1i * u * phi_im1))
+  integrand_P2 <- Re(exp(-1i * u * lnK) * phi_u / (1i * u))
+
+  weights <- rep(1, N + 1)
+  weights[seq(2, N, by = 2)] <- 4
+  weights[seq(3, N - 1, by = 2)] <- 2
+
+  P1 <- 0.5 + (du / (3 * pi)) * sum(weights * integrand_P1)
+  P2 <- 0.5 + (du / (3 * pi)) * sum(weights * integrand_P2)
+
+  call <- S0 * exp(-q * T) * P1 - K * exp(-r * T) * P2
+  put  <- K * exp(-r * T) * (1 - P2) - S0 * exp(-q * T) * (1 - P1)
+
+  return(list(call = call, put = put))
+}
+
+# --- Exemple sur le point ATM 1Y ---
+params_bates <- list(
+  S0 = S0,
+  K = S0,
+  r = r,
+  q = q,
+  T = 1,
+  v0 = 0.08,
+  lambda = 0.3,
+  muJ = 0.02,
+  deltaJ = 0.2,
+  kappa = 1.2,
+  theta = 0.05,
+  sigma = 0.5,
+  rho = -0.3
+)
+
+result_bates <- heston_price_call_bates(params_bates)
+cat(sprintf("Prix Call Heston-Bates (ATM, 1Y): %.4f\n", result_bates$call))
+cat(sprintf("Prix Put  Heston-Bates (ATM, 1Y): %.4f\n", result_bates$put))
+
+```
+
+```{r}
+
+## Double-Heston Model 
+
+# --- Librairies ---
+library(readxl)
+library(pracma)
+library(nloptr)
+
+# --- Chargement des données ---
+file <- "market_data.xlsx"
+df_raw <- read_excel(file, sheet = "NDX-2014", col_names = FALSE)
+
+# --- Paramètres du marché ---
+S0 <- as.numeric(df_raw[3, 3])  # correction : la cellule contenant 3795.74
+r  <- as.numeric(df_raw[1, 9])
+q  <- as.numeric(df_raw[2, 9])
+
+# --- Données de volatilité implicite ---
+header_row <- 7
+raw_header <- as.numeric(df_raw[header_row, 4:10])
+strikes_abs <- raw_header
+maturities <- df_raw[(header_row + 1):(header_row + 10), 3]
+vol_data <- df_raw[(header_row + 1):(header_row + 10), 4:10]
+
+# --- Construction de la matrice ---
+vol_matrix <- as.matrix(vol_data)
+rownames(vol_matrix) <- gsub(" ", "", toupper(maturities[[1]]))
+colnames(vol_matrix) <- paste0(round(strikes_abs * 100), "%")
+
+# --- Nettoyage des labels valides ---
+labels <- rownames(vol_matrix)
+valid_labels <- grepl("^[0-9]+[MY]$", labels)
+vol_matrix <- vol_matrix[valid_labels, , drop=FALSE]
+
+# --- Fonction maturité ---
+maturity_to_T <- function(label) {
+  if (label == "T") return(NA)
+  if (grepl("M$", label)) return(as.numeric(gsub("M", "", label)) / 12)
+  if (grepl("Y$", label)) return(as.numeric(gsub("Y", "", label)))
+  stop(paste("Unknown format:", label))
+}
+
+# --- Fonction Black-Scholes ---
+bs_call_price <- function(S, K, r, q, sigma, T) {
+  d1 <- (log(S / K) + (r - q + 0.5 * sigma^2) * T) / (sigma * sqrt(T))
+  d2 <- d1 - sigma * sqrt(T)
+  return(S * exp(-q * T) * pnorm(d1) - K * exp(-r * T) * pnorm(d2))
+}
+
+# --- Construction du market data ---
+market_data <- data.frame()
+for (i in seq_len(nrow(vol_matrix))) {
+  T_val <- maturity_to_T(rownames(vol_matrix)[i])
+  if (is.na(T_val)) next
+  for (j in seq_len(ncol(vol_matrix))) {
+    K <- strikes_abs[j]
+    vol <- as.numeric(vol_matrix[i, j]) / 100
+    price <- bs_call_price(S0, K, r, q, vol, T_val)
+    market_data <- rbind(market_data, data.frame(T = T_val, K = K, price = price))
+  }
+}
+
+# --- Fonction caractéristique double Heston ---
+double_heston_charfunc <- function(u, params, T) {
+  S0 <- params$S0; r <- params$r; q <- params$q
+  v01 <- params$v01; kappa1 <- params$kappa1; theta1 <- params$theta1
+  sigma1 <- params$sigma1; rho1 <- params$rho1
+  v02 <- params$v02; kappa2 <- params$kappa2; theta2 <- params$theta2
+  sigma2 <- params$sigma2; rho2 <- params$rho2
+
+  if (is.na(S0) || S0 <= 0) return(rep(NA, length(u)))
+
+  iu <- 1i * u
+
+  safe_log <- function(x) {
+    res <- log(x)
+    res[is.nan(res) | is.infinite(res)] <- 0
+    return(res)
+  }
+
+  C_D <- function(kappa, theta, sigma, rho) {
+    b <- kappa - rho * sigma * iu
+    d2 <- b^2 + sigma^2 * (u^2 + iu)
+    d <- sqrt(d2)
+    d[is.nan(d)] <- 0 + 0i
+
+    g <- (b - d) / (b + d)
+    g[is.nan(g)] <- 0
+
+    e_dT <- exp(-d * T)
+    one_minus_g <- 1 - g
+    one_minus_geT <- 1 - g * e_dT
+    log_term <- safe_log(one_minus_geT / one_minus_g)
+
+    C <- kappa * theta / sigma^2 * ((b - d) * T - 2 * log_term)
+    D <- (b - d) / sigma^2 * ((1 - e_dT) / one_minus_geT)
+    list(C = C, D = D)
+  }
+
+  tryCatch({
+    out1 <- C_D(kappa1, theta1, sigma1, rho1)
+    out2 <- C_D(kappa2, theta2, sigma2, rho2)
+
+    total_exponent <- iu * (r - q) * T + out1$C + out2$C + out1$D * v01 + out2$D * v02 + iu * log(S0)
+    total_exponent[is.nan(total_exponent) | is.infinite(total_exponent)] <- 0
+
+    phi <- exp(total_exponent)
+    phi[is.nan(phi) | is.infinite(phi)] <- 0
+    return(phi)
+  }, error = function(e) {
+    return(rep(NA, length(u)))
+  })
+}
+
+
+price_call <- function(K, T, params, N = 4096, U_max = 1000) {
+  S0 <- params$S0; r <- params$r; q <- params$q
+  du <- U_max / N
+  u <- seq(1e-10, U_max, length.out = N + 1)
+  lnK <- log(K)
+
+  phi_u     <- double_heston_charfunc(u, params, T)
+  phi_u_im1 <- double_heston_charfunc(u - 1i, params, T)
+  phi_im1   <- double_heston_charfunc(-1i, params, T)
+
+  if (any(is.na(phi_u)) || any(is.na(phi_u_im1)) || is.na(phi_im1) || abs(phi_im1) < 1e-10) {
+    warning("Invalid phi values")
+    return(NA)
+  }
+
+  I1 <- Re(exp(-1i * u * lnK) * phi_u_im1 / (1i * u * phi_im1))
+  I2 <- Re(exp(-1i * u * lnK) * phi_u / (1i * u))
+
+  w <- rep(1, length(u))
+  w[seq(2, N, by = 2)] <- 4
+  w[seq(3, N - 1, by = 2)] <- 2
+
+  P1 <- 0.5 + du / (3 * pi) * sum(w * I1)
+  P2 <- 0.5 + du / (3 * pi) * sum(w * I2)
+
+  S0 * exp(-q * T) * P1 - K * exp(-r * T) * P2
+}
+
+residuals <- function(x) {
+  params <- list(S0=S0, r=r, q=q,
+                 v01=x[1], kappa1=x[2], theta1=x[3], sigma1=x[4], rho1=x[5],
+                 v02=x[6], kappa2=x[7], theta2=x[8], sigma2=x[9], rho2=x[10])
+  res <- numeric(nrow(market_data))
+  for (i in seq_len(nrow(market_data))) {
+    T <- market_data$T[i]
+    K <- market_data$K[i]
+    mkt_price <- market_data$price[i]
+    model_price <- price_call(K, T, params)
+    res[i] <- model_price - mkt_price
+  }
+  return(res)
+}
+
+x0 <- c(0.04, 1, 0.04, 0.5, -0.5, 0.04, 1, 0.04, 0.5, -0.5)
+lb <- c(rep(1e-4, 4), -0.999, rep(1e-4, 4), -0.999)
+ub <- c(rep(2.0, 4), 0.999, rep(2.0, 4), 0.999)
+
+opt <- nloptr(x0 = x0,
+              eval_f = function(x) sum(residuals(x)^2),
+              lb = lb, ub = ub,
+              opts = list(algorithm = "NLOPT_LN_BOBYQA", maxeval = 300))
+
+cat("\nParamètres calibrés :\n")
+print(opt$solution)
+
+
+opt_params <- list(S0=S0, r=r, q=q,
+                   v01=opt$solution[1], kappa1=opt$solution[2], theta1=opt$solution[3],
+                   sigma1=opt$solution[4], rho1=opt$solution[5],
+                   v02=opt$solution[6], kappa2=opt$solution[7], theta2=opt$solution[8],
+                   sigma2=opt$solution[9], rho2=opt$solution[10])
+
+T_test <- 1.0
+K_test <- S0
+price <- price_call(K_test, T_test, opt_params)
+cat(sprintf("Prix du Call ATM (T=1Y): %.4f\n", price))
+
+# --- Calcul du Put par parité ---
+put_price <- price - S0 * exp(-q * T_test) + K_test * exp(-r * T_test)
+cat(sprintf("Prix du Put  ATM (T=1Y): %.4f\n", put_price))
+```
+
+```{r}
+## Heston 93
+
+# --- Librairies ---
+library(readxl)
+library(pracma)
+
+# --- Chargement des données ---
+file <- "market_data.xlsx"
+df_raw <- read_excel(file, sheet = "NDX-2014", col_names = FALSE)
+
+# --- Paramètres du marché ---
+S0 <- as.numeric(df_raw[3, 3])
+r  <- as.numeric(df_raw[1, 9])
+q  <- as.numeric(df_raw[2, 9])
+
+# --- Paramètres du modèle Heston ---
+params <- list(
+  S0 = S0,
+  r  = r,
+  q  = q,
+  T  = 1,      # 1 an
+  K  = S0,     # ATM
+  v0 = 0.04,
+  kappa = 2,
+  theta = 0.04,
+  sigma = 0.5,
+  rho   = -0.5
+)
+
+# --- Fonction caractéristique Heston ---
+heston_charfunc <- function(u, params) {
+  S0    <- params$S0
+  r     <- params$r
+  q     <- params$q
+  T     <- params$T
+  v0    <- params$v0
+  kappa <- params$kappa
+  theta <- params$theta
+  sigma <- params$sigma
+  rho   <- params$rho
+  
+  iu <- 1i * u
+  b  <- kappa - rho * sigma * iu
+  d  <- sqrt(b^2 + sigma^2 * (u^2 + iu))
+  g  <- (b - d) / (b + d)
+  exp_dT <- exp(-d * T)
+  
+  one_minus_g <- 1 - g
+  one_minus_geT <- 1 - g * exp_dT
+  safe_log <- log(one_minus_geT / one_minus_g)
+  safe_log[is.nan(safe_log) | is.infinite(safe_log)] <- 0
+  
+  C <- iu * (r - q) * T + (kappa * theta / sigma^2) * ((b - d) * T - 2 * safe_log)
+  D <- ((b - d) / sigma^2) * ((1 - exp_dT) / one_minus_geT)
+  
+  expo <- C + D * v0 + iu * log(S0)
+  expo[is.nan(expo) | is.infinite(expo)] <- 0
+  
+  return(exp(expo))
+}
+
+
+heston_price_call <- function(params, N = 4096, U_max = 1000) {
+  S0 <- params$S0
+  r  <- params$r
+  q  <- params$q
+  T  <- params$T
+  K  <- params$K
+  
+  if (N %% 2 == 1) N <- N + 1
+  
+  u   <- seq(1e-10, U_max, length.out = N + 1)
+  du  <- u[2] - u[1]
+  lnK <- log(K)
+  
+  phi_u     <- heston_charfunc(u, params)
+  phi_u_im1 <- heston_charfunc(u - 1i, params)
+  phi_im1   <- heston_charfunc(-1i, params)
+  
+  if (any(is.na(phi_u)) || any(is.na(phi_u_im1)) || is.na(phi_im1) || abs(phi_im1) < 1e-10) {
+    warning("Invalid phi values")
+    return(list(call = NA, put = NA))
+  }
+  
+  I1 <- Re(exp(-1i * u * lnK) * phi_u_im1 / (1i * u * phi_im1))
+  I2 <- Re(exp(-1i * u * lnK) * phi_u / (1i * u))
+  
+  w <- rep(1, length(u))
+  w[seq(2, N, by = 2)] <- 4
+  w[seq(3, N - 1, by = 2)] <- 2
+  
+  P1 <- 0.5 + (du / (3 * pi)) * sum(w * I1)
+  P2 <- 0.5 + (du / (3 * pi)) * sum(w * I2)
+  
+  call <- S0 * exp(-q * T) * P1 - K * exp(-r * T) * P2
+  put  <- K * exp(-r * T) * (1 - P2) - S0 * exp(-q * T) * (1 - P1)
+  
+  return(list(call = call, put = put))
+}
+
+# --- Test de pricing ---
+result <- heston_price_call(params)
+cat(sprintf("✔️ Prix du Call Heston (T=1Y, K=S0): %.4f\n", result$call))
+cat(sprintf("✔️ Prix du Put  Heston (T=1Y, K=S0): %.4f\n", result$put))
+```
+

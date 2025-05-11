@@ -109,7 +109,7 @@ def double_heston_charfunc(u, params):
     # φ(u) complet
     return np.exp(C_total + D1 * v01 + D2 * v02 + iu * np.log(S0))
 
-def heston_price_call_fft(params, N=10000, U_max=1000):
+def heston_price_call(params, N=10000, U_max=1000):
     S0 = params["S0"]
     r  = params["r"]
     q  = params["q"]
@@ -149,7 +149,7 @@ def heston_price_call_fft(params, N=10000, U_max=1000):
     return call, put
 
 
-def heston_price_call_fft_bates(params, N=10000, U_max=1000):
+def heston_price_call_bates(params, N=10000, U_max=1000):
     S0 = params["S0"]
     r  = params["r"]
     q  = params["q"]
@@ -188,7 +188,7 @@ def heston_price_call_fft_bates(params, N=10000, U_max=1000):
 
     return call, put
 
-def heston_price_call_fft_double_heston(params, N=10000, U_max=1000):
+def heston_price_call_double_heston(params, N=10000, U_max=1000):
     S0 = params["S0"]
     r  = params["r"]
     q  = params["q"]
@@ -590,7 +590,7 @@ def calculate_price():
         if option_type == 'binary':
             pricing_func = heston_price_binary
         else:
-            pricing_func = heston_price_call_fft
+            pricing_func = heston_price_call
     elif model == 'heston-bates':
         params = {
             'S0': float(data['S0']),
@@ -610,7 +610,7 @@ def calculate_price():
         if option_type == 'binary':
             pricing_func = heston_bates_price_binary
         else:
-            pricing_func = heston_price_call_fft_bates
+            pricing_func = heston_price_call_bates
     else:  # double-heston
         params = {
             'S0': float(data['S0']),
@@ -632,7 +632,7 @@ def calculate_price():
         if option_type == 'binary':
             pricing_func = double_heston_price_binary
         else:
-            pricing_func = heston_price_call_fft_double_heston
+            pricing_func = heston_price_call_double_heston
 
     try:
         call, put = pricing_func(
@@ -699,7 +699,7 @@ def residuals(x, market_data, S0, r, q):
     for T, K, mkt_price in market_data:
         params = params_base.copy()
         params.update({"T": T, "K": K})
-        model_call, _ = heston_price_call_fft(params, N=1000, U_max=2000)
+        model_call, _ = heston_price_call(params, N=1000, U_max=2000)
         res.append(model_call - mkt_price)
     return np.array(res)
 
@@ -709,7 +709,7 @@ def residuals_bates(x, market_data, S0, r, q):
     for T, K, mkt_price in market_data:
         params = params_base.copy()
         params.update({"T": T, "K": K})
-        model_call, _ = heston_price_call_fft_bates(params, N=1000, U_max=2000)
+        model_call, _ = heston_price_call_bates(params, N=1000, U_max=2000)
         res.append(model_call - mkt_price)
     return np.array(res)
 
@@ -719,7 +719,7 @@ def residuals_double_heston(x, market_data, S0, r, q):
     for T, K, mkt_price in market_data:
         params = params_base.copy()
         params.update({"T": T, "K": K})
-        model_call, _ = heston_price_call_fft_double_heston(params, N=2000, U_max=2000)
+        model_call, _ = heston_price_call_double_heston(params, N=2000, U_max=2000)
         res.append(model_call - mkt_price)
     return np.array(res)
 

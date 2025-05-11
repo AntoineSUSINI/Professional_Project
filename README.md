@@ -32,6 +32,14 @@ This project implements various option pricing models based on the Heston framew
   - **style.css:** UI styling
   - **script.js:** Frontend logic
 
+## Installation
+
+Install the required Python libraries using pip:
+
+```bash
+pip install -r requirements.txt
+```
+
 ## Getting Started
 
 ### Dependencies

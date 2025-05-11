@@ -12,7 +12,6 @@ This project implements various option pricing models based on the Heston framew
 
 ### Core Functionality
 - **Characteristic Functions:** Implementations for all model variants
-- **FFT-based Pricing:** Fast Fourier Transform for European options
 - **Model Calibration:** Least squares optimization using market data
 - **Market Data Processing:** Excel data import and preprocessing
 - **Interactive UI:** Simple web interface for model usage
@@ -38,13 +37,6 @@ Install the required Python libraries using pip:
 
 ```bash
 pip install -r requirements.txt
-```
-
-## Getting Started
-
-### Dependencies
-```bash
-pip install numpy pandas scipy matplotlib flask
 ```
 
 ### Running the Web Interface

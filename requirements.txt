@@ -2,4 +2,5 @@ flask
 requests
 pandas
 numpy
-# Add other libraries as needed
+scipy
+matplotlib
